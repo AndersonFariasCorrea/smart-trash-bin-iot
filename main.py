@@ -3,89 +3,87 @@ import machine
 import socket
 
 
-TRIGGER_PIN = machine.Pin(12, machine.Pin.OUT)
-ECHO_PIN = machine.Pin(14, machine.Pin.IN)
+class SmartTrashBin:
+    def __init__(self):
+        self.TRIGGER_PIN = machine.Pin(12, machine.Pin.OUT)
+        self.ECHO_PIN = machine.Pin(14, machine.Pin.IN)
+        self.distancia = 0
 
+    def medir_distancia(self):
+        # Emitir um pulso curto no pino Trigger
+        self.TRIGGER_PIN.on()
+        time.sleep_us(10)
+        self.TRIGGER_PIN.off()
 
-def medir_distancia():
-    # Emitir um pulso curto no pino Trigger
-    TRIGGER_PIN.on()
-    time.sleep_us(10)
-    TRIGGER_PIN.off()
+        # Medir a duração do pulso no pino Echo
+        pulse_duration = machine.time_pulse_us(self.ECHO_PIN, 1, 30000)  # 30.000 us = 30 ms (máximo alcance do HC-SR04)
 
-    # Medir a duração do pulso no pino Echo
-    pulse_duration = machine.time_pulse_us(ECHO_PIN, 1, 30000)  # 30.000 us = 30 ms (máximo alcance do HC-SR04)
+        # Calcular a distância em centímetros
+        distancia_cm = (pulse_duration / 2) / 29.1  # Fator de conversão (29.1 us/cm)
 
-    # Calcular a distância em centímetros
-    distancia_cm = (pulse_duration / 2) / 29.1  # Fator de conversão (29.1 us/cm)
+        return distancia_cm
 
-    return distancia_cm
+    def do_connect(self):
+        import network
+        wlan = network.WLAN(network.STA_IF)
+        wlan.active(True)
+        if not wlan.isconnected():
+            print('Conectando à rede...')
+            wlan.connect('DELTA_FIBRA_ANDERSON', 'Potato23@.')
+            while not wlan.isconnected():
+                pass
+        print('Configuração de rede:', wlan.ifconfig())
+        return wlan
 
-
-def do_connect():
-    import network
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    if not wlan.isconnected():
-        print('Conectando à rede...')
-        wlan.connect('DELTA_FIBRA_ANDERSON', 'Potato23@.')
-        while not wlan.isconnected():
-            pass
-    print('Configuração de rede:', wlan.ifconfig())
-    return wlan  # Retorna a variável 'wlan' para uso fora da função
-
-
-distancia = 0
-do_connect()
-
-def get_query(input_str):
-    result = []
-    start = 0
-
-    while True:
-        start_quote = input_str.find('"', start)
-        if start_quote == -1:
-            break
-
-        end_quote = input_str.find('"', start_quote + 1)
-        if end_quote == -1:
-            break
-
-        result.append(input_str[start_quote + 1:end_quote])
-        start = end_quote + 1
-
-    return result
-
-
-def start_app():
-    serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    serv.bind(('0.0.0.0', 8080))
-    serv.listen(5)
-
-    while True:
-        conn, addr = serv.accept()
-        from_client = ''
+    def get_query(self, input_str):
+        result = []
+        start = 0
 
         while True:
-            data = conn.recv(4096)
-            if not data:
+            start_quote = input_str.find('"', start)
+            if start_quote == -1:
                 break
-            from_client += data.decode('utf8')
-            from_client = get_query(from_client)
 
-            if from_client[0] == 'action':
-                if from_client[1] == 'status':
-                    # pega distancia
-                    distancia = medir_distancia()
-                    distancia = "{:.2f}".format(distancia)
-            else:
-                distancia = False
-            print(from_client)
-            conn.send(str(distancia).encode())
+            end_quote = input_str.find('"', start_quote + 1)
+            if end_quote == -1:
+                break
 
-        conn.close()
+            result.append(input_str[start_quote + 1:end_quote])
+            start = end_quote + 1
 
-        print('client disconnected and shutdown')
+        return result
+
+    def start_app(self):
+        wlan = self.do_connect()
+
+        serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serv.bind(('0.0.0.0', 8080))
+        serv.listen(5)
+
+        while True:
+            conn, addr = serv.accept()
+            from_client = ''
+
+            while True:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                from_client += data.decode('utf8')
+                from_client = self.get_query(from_client)
+
+                if from_client[0] == 'action':
+                    if from_client[1] == 'status':
+                        # pega distancia
+                        self.distancia = self.medir_distancia()
+                        self.distancia = "{:.2f}".format(self.distancia)
+                else:
+                    self.distancia = False
+                print(from_client)
+                conn.send(str(self.distancia).encode())
+
+            conn.close()
+            print('client disconnected and shutdown')
 
 
-start_app()
+smart_bin = SmartTrashBin()
+smart_bin.start_app()
