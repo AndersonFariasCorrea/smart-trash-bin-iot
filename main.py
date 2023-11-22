@@ -1,7 +1,6 @@
 import time
 import machine
 import socket
-import re
 
 
 TRIGGER_PIN = machine.Pin(12, machine.Pin.OUT)
@@ -22,66 +21,71 @@ def medir_distancia():
 
     return distancia_cm
 
+
 def do_connect():
     import network
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
         print('Conectando à rede...')
-        wlan.connect('CAMPOS 2G', 'Campos1523')
+        wlan.connect('DELTA_FIBRA_ANDERSON', 'Potato23@.')
         while not wlan.isconnected():
             pass
     print('Configuração de rede:', wlan.ifconfig())
     return wlan  # Retorna a variável 'wlan' para uso fora da função
 
 
-serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-serv.bind(('0.0.0.0', 8080))
-serv.listen(5)
-
 distancia = 0
 do_connect()
 
+def get_query(input_str):
+    result = []
+    start = 0
 
-def get_query(input):
-    pattern = r'"([^"]*)"'
-    matches = re.search(pattern, input)
-    result = [match.group(1) for match in matches]
+    while True:
+        start_quote = input_str.find('"', start)
+        if start_quote == -1:
+            break
+
+        end_quote = input_str.find('"', start_quote + 1)
+        if end_quote == -1:
+            break
+
+        result.append(input_str[start_quote + 1:end_quote])
+        start = end_quote + 1
+
     return result
 
 
-while True:
-    conn, addr = serv.accept()
-    from_client = ''
+def start_app():
+    serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    serv.bind(('0.0.0.0', 8080))
+    serv.listen(5)
 
-  while True:
-    data = conn.recv(4096)
-    if not data: break
-    from_client += data.decode('utf8')
-    from_client = get_query(from_client)
+    while True:
+        conn, addr = serv.accept()
+        from_client = ''
 
-    if from_client[0] == 'action':
-        if from_client[1] == 'status':
-            # pega distancia
-            distancia = medir_distancia()
-            distancia = "Distância medida: {:.2f} cm".format(distancia)
-    else:
-        distancia = False
-    print (from_client)
-    conn.send(str(distancia).encode())
+        while True:
+            data = conn.recv(4096)
+            if not data:
+                break
+            from_client += data.decode('utf8')
+            from_client = get_query(from_client)
 
-  conn.close()
+            if from_client[0] == 'action':
+                if from_client[1] == 'status':
+                    # pega distancia
+                    distancia = medir_distancia()
+                    distancia = "{:.2f}".format(distancia)
+            else:
+                distancia = False
+            print(from_client)
+            conn.send(str(distancia).encode())
 
-  print ('client disconnected and shutdown')
+        conn.close()
 
-
-# try:
-#      while True:
-#          distancia = medir_distancia()
-#          print("Distância medida: {:.2f} cm".format(distancia))
-#          time.sleep(1)
-#
-# except KeyboardInterrupt:
-#      pass
+        print('client disconnected and shutdown')
 
 
+start_app()
