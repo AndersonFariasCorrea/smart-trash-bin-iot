@@ -4,7 +4,6 @@ import socket
 import re
 
 
-
 TRIGGER_PIN = machine.Pin(12, machine.Pin.OUT)
 ECHO_PIN = machine.Pin(14, machine.Pin.IN)
 
@@ -43,15 +42,17 @@ serv.listen(5)
 distancia = 0
 do_connect()
 
+
 def get_query(input):
     pattern = r'"([^"]*)"'
-    matches = re.finditer(pattern, input)
+    matches = re.search(pattern, input)
     result = [match.group(1) for match in matches]
     return result
 
+
 while True:
-  conn, addr = serv.accept()
-  from_client = ''
+    conn, addr = serv.accept()
+    from_client = ''
 
   while True:
     data = conn.recv(4096)
