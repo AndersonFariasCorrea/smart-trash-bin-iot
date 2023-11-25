@@ -3,11 +3,38 @@ import machine
 import socket
 
 
+def get_query(input_str):
+    result = []
+    start = 0
+
+    while True:
+        start_quote = input_str.find('"', start)
+        if start_quote == -1:
+            break
+
+        end_quote = input_str.find('"', start_quote + 1)
+        if end_quote == -1:
+            break
+
+        result.append(input_str[start_quote + 1:end_quote])
+        start = end_quote + 1
+
+    return result
+
+
+def get_filled_calc(a, b):
+    if b == 0:
+        return "100%"
+
+    percentage = (a / b) * 100
+    return percentage
+
+
 class SmartTrashBin:
     def __init__(self):
         self.TRIGGER_PIN = machine.Pin(12, machine.Pin.OUT)
         self.ECHO_PIN = machine.Pin(14, machine.Pin.IN)
-        self.distancia = 0
+        self.distancia = 0.0
 
     def medir_distancia(self):
         # Emitir um pulso curto no pino Trigger
@@ -23,6 +50,18 @@ class SmartTrashBin:
 
         return distancia_cm
 
+    def store_trash_bin_info(self):
+        content = str(self.medir_distancia())
+        print(content)
+        with open('trash_bin_size.txt', 'w') as file:
+            file.write(content)
+        return content
+
+    def read_static(self, file_path):
+        with open(file_path, 'r') as file:
+            content = file.read()
+        return content
+
     def do_connect(self):
         import network
         wlan = network.WLAN(network.STA_IF)
@@ -34,24 +73,6 @@ class SmartTrashBin:
                 pass
         print('Configuração de rede:', wlan.ifconfig())
         return wlan
-
-    def get_query(self, input_str):
-        result = []
-        start = 0
-
-        while True:
-            start_quote = input_str.find('"', start)
-            if start_quote == -1:
-                break
-
-            end_quote = input_str.find('"', start_quote + 1)
-            if end_quote == -1:
-                break
-
-            result.append(input_str[start_quote + 1:end_quote])
-            start = end_quote + 1
-
-        return result
 
     def start_app(self):
         wlan = self.do_connect()
@@ -69,17 +90,29 @@ class SmartTrashBin:
                 if not data:
                     break
                 from_client += data.decode('utf8')
-                from_client = self.get_query(from_client)
+                from_client = get_query(from_client)
 
                 if from_client[0] == 'action':
+                    print(from_client[1])
                     if from_client[1] == 'status':
-                        # pega distancia
                         self.distancia = self.medir_distancia()
-                        self.distancia = "{:.2f}".format(self.distancia)
+                        trash_bin_size = self.read_static('trash_bin_size.txt')
+
+                        self.distancia = get_filled_calc(float(self.distancia), float(trash_bin_size))
+                        self.distancia = "{:.2f}%".format(self.distancia)
+                        print("status - trash bin size:" + trash_bin_size + "now: " + self.distancia)
+
+                    elif from_client[1] == 'start_or_restart':
+
+                        trash_bin_size = self.store_trash_bin_info()
+                        if trash_bin_size is not None:
+                            self.distancia = '100.00%'
+
+                        print("start_or_restart - trash bin size:" + trash_bin_size)
                 else:
                     self.distancia = False
                 print(from_client)
-                conn.send(str(self.distancia).encode())
+                conn.send((str(self.distancia) + " de espaço disponível").encode())
 
             conn.close()
             print('client disconnected and shutdown')
